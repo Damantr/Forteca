@@ -1,12 +1,14 @@
 use async_trait::async_trait;
+use modsecurity::engine::ModSecurity;
 use pingora::{
     prelude::HttpPeer,
     proxy::{ProxyHttp, Session, http_proxy_service},
     server::Server,
 };
 use std::sync::Arc;
-use modsecurity::engine::ModSecurity;
 mod modsecurity;
+
+use modsecurity::rules::Rules;
 
 pub struct RProxy;
 
@@ -33,7 +35,13 @@ impl ProxyHttp for RProxy {
 fn main() {
     let _waf = ModSecurity::new().expect("Could not initialize");
     println!("ModSecurity initialize");
-    
+    let mut rules = Rules::new().unwrap();
+    rules.add("SecRuleEngine On").unwrap();
+    rules
+        .add(r#"SecRule REQUEST_URI "@contains /admin" "id:1001,phase:1,deny,status:403""#)
+        .unwrap();
+    println!("Rules loaded!");
+
     let mut server = Server::new(None).unwrap();
     server.bootstrap();
     let mut proxy = http_proxy_service(&server.configuration, RProxy);
