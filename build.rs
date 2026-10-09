@@ -2,7 +2,7 @@ use std::{env, path::PathBuf};
 
 fn main() {
     let lib = pkg_config::Config::new()
-        .probe("modsecuirty")
+        .probe("modsecurity")
         .expect("ModSecurity not found");
 
     let mut builder = bindgen::Builder::default()

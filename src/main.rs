@@ -5,6 +5,8 @@ use pingora::{
     server::Server,
 };
 use std::sync::Arc;
+use modsecurity::engine::ModSecurity;
+mod modsecurity;
 
 pub struct RProxy;
 
@@ -22,13 +24,16 @@ impl ProxyHttp for RProxy {
             true,
             "localhost".to_string(),
         ));
-        peer.options.verify_cert = false; 
+        peer.options.verify_cert = false;
         peer.options.verify_hostname = false;
         Ok(peer)
     }
 }
 
 fn main() {
+    let _waf = ModSecurity::new().expect("Could not initialize");
+    println!("ModSecurity initialize");
+    
     let mut server = Server::new(None).unwrap();
     server.bootstrap();
     let mut proxy = http_proxy_service(&server.configuration, RProxy);

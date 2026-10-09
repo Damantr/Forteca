@@ -1,3 +1,3 @@
-mod engine;
+pub mod engine;
 mod ffi;
 mod transaction;
