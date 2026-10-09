@@ -3,6 +3,11 @@ name = "WAF_RL7"
 version = "0.1.0"
 edition = "2024"
 
+
 [dependencies]
 async-trait = "0.1"
 pingora = { version = "0.9.0", features = ["proxy", "openssl"] }
+
+[build-dependencies]
+bindgen = "0.73.2"
+pkg-config = "0.3.34"

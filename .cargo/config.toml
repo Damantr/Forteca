@@ -1,0 +1,5 @@
+[env]
+PKG_CONFIG_PATH = { value = "/usr/local/modsecurity/lib/pkgconfig", force = false }
+
+[target.'cfg(target_os = "linux")']
+rustflags = ["-C", "link-arg=-Wl,-rpath,/usr/local/modsecurity/lib"]

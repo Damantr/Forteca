@@ -22,7 +22,7 @@ impl ProxyHttp for RProxy {
             true,
             "localhost".to_string(),
         ));
-        peer.options.verify_cert = false;
+        peer.options.verify_cert = false; 
         peer.options.verify_hostname = false;
         Ok(peer)
     }
