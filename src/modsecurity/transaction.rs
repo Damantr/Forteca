@@ -59,6 +59,21 @@ impl<'a> Transaction<'a> {
     pub fn process_request_headers(&mut self) -> i32 {
         unsafe { ffi::msc_process_request_headers(self.ptr.as_ptr()) }
     }
+
+    pub fn add_request_header(&mut self, name: &str, value: &str) -> Result<(), String> {
+        let name = name.as_bytes();
+        let value = value.as_bytes();
+        unsafe {
+            ffi::msc_add_n_request_header(
+                self.ptr.as_ptr(),
+                name.as_ptr(),
+                name.len(),
+                value.as_ptr(),
+                value.len(),
+            )
+        };
+        Ok(())
+    }
 }
 
 impl Drop for Transaction<'_> {

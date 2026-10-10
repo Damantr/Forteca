@@ -39,12 +39,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rules = Rules::new()?;
     rules.add("SecRuleEngine On")?;
     rules.add(r#"SecRule REQUEST_URI "@contains /admin" "id:1001,phase:1,deny,status:403""#)?;
+    rules.add(
+    r#"SecRule REQUEST_HEADERS:User-Agent "@contains BadBot" "id:1002,phase:1,deny,status:403""#
+)?;
 
     let mut tx = Transaction::new(&_waf, &rules)?;
 
     tx.process_uri("/hello", "GET", "1.1")?;
+    tx.add_request_header("Host", "localhost")?;
+    tx.add_request_header("User-Agent", "BadBot/1.0")?;
     tx.process_request_headers();
-
     let decision = tx.intervention();
 
     println!("WAF decision {:?}", decision);
