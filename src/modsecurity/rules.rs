@@ -15,6 +15,9 @@ impl Rules {
 
         Ok(Self { ptr })
     }
+    pub(crate) fn as_ptr(&self) -> *mut ffi::RulesSet {
+        self.ptr.as_ptr()
+    }
 
     pub fn add(&mut self, rule: &str) -> Result<(), String> {
         let rule = CString::new(rule).map_err(|e| e.to_string())?;

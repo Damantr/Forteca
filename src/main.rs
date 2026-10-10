@@ -10,6 +10,8 @@ mod modsecurity;
 
 use modsecurity::rules::Rules;
 
+use crate::modsecurity::transaction::Transaction;
+
 pub struct RProxy;
 
 #[async_trait]
@@ -32,15 +34,20 @@ impl ProxyHttp for RProxy {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _waf = ModSecurity::new().expect("Could not initialize");
-    println!("ModSecurity initialize");
-    let mut rules = Rules::new().unwrap();
-    rules.add("SecRuleEngine On").unwrap();
-    rules
-        .add(r#"SecRule REQUEST_URI "@contains /admin" "id:1001,phase:1,deny,status:403""#)
-        .unwrap();
-    println!("Rules loaded!");
+    let mut rules = Rules::new()?;
+    rules.add("SecRuleEngine On")?;
+    rules.add(r#"SecRule REQUEST_URI "@contains /admin" "id:1001,phase:1,deny,status:403""#)?;
+
+    let mut tx = Transaction::new(&_waf, &rules)?;
+
+    tx.process_uri("/hello", "GET", "1.1")?;
+    tx.process_request_headers();
+
+    let decision = tx.intervention();
+
+    println!("WAF decision {:?}", decision);
 
     let mut server = Server::new(None).unwrap();
     server.bootstrap();

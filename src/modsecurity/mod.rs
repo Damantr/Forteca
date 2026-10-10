@@ -1,4 +1,4 @@
 pub mod engine;
 mod ffi;
 pub mod rules;
-mod transaction;
+pub mod transaction;
