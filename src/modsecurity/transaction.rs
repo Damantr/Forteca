@@ -1,5 +1,5 @@
 use std::{
-    ffi::CString,
+    ffi::{CStr, CString},
     marker::PhantomData,
     ptr::{self, NonNull},
 };
@@ -8,6 +8,7 @@ use super::{engine::ModSecurity, ffi, rules::Rules};
 
 pub struct Transaction<'a> {
     ptr: NonNull<ffi::Transaction>,
+    state: TransactionState,
     _lifetime: PhantomData<(&'a ModSecurity, &'a Rules)>,
 }
 
@@ -19,6 +20,7 @@ impl<'a> Transaction<'a> {
         Ok(Self {
             ptr,
             _lifetime: PhantomData,
+            state: TransactionState::Created,
         })
     }
 
@@ -50,10 +52,27 @@ impl<'a> Transaction<'a> {
 
         let result = unsafe { ffi::msc_intervention(self.ptr.as_ptr(), &mut intervention) };
 
-        if result == 0 || intervention.disruptive == 0 {
-            return WafDecision::Allow;
+        let decision = if result == 0 || intervention.disruptive == 0 {
+            WafDecision::Allow
+        } else if !intervention.url.is_null() {
+            let url = unsafe {
+                CStr::from_ptr(intervention.url)
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            WafDecision::Redirect {
+                status: intervention.status as u16,
+                url,
+            }
+        } else {
+            WafDecision::Block(intervention.status as u16)
+        };
+
+        unsafe {
+            ffi::msc_intervention_cleanup(&mut intervention);
         }
-        WafDecision::Block(intervention.status as u16)
+
+        decision
     }
 
     pub fn process_request_headers(&mut self) -> i32 {
@@ -63,8 +82,19 @@ impl<'a> Transaction<'a> {
     pub fn append_request_body(&mut self, body: &[u8]) -> i32 {
         unsafe { ffi::msc_append_request_body(self.ptr.as_ptr(), body.as_ptr(), body.len()) }
     }
-    pub fn process_request_body(&mut self) -> i32 {
-        unsafe { ffi::msc_process_request_body(self.ptr.as_ptr()) }
+    pub fn process_request_body(&mut self) -> Result<(), String> {
+        if self.state != TransactionState::HeadersProcessed {
+            return Err("Headers must br processed before".into());
+        }
+
+        let result = unsafe { ffi::msc_process_request_body(self.ptr.as_ptr()) };
+
+        if result != 1 {
+            return Err("ModSecurity failed to process request body".into());
+        }
+
+        self.state = TransactionState::BodyProcessed;
+        Ok(())
     }
 
     pub fn add_request_header(&mut self, name: &str, value: &str) -> Result<(), String> {
@@ -96,4 +126,13 @@ pub enum WafDecision {
     Allow,
     Block(u16),
     Redirect { status: u16, url: String },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TransactionState {
+    Created,
+    UriProcessed,
+    HeadersProcessed,
+    BodyProcessed,
+    Finished,
 }

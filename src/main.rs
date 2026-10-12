@@ -41,13 +41,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     rules.add(r#"SecRule REQUEST_URI "@contains /admin" "id:1001,phase:1,deny,status:403""#)?;
     rules.add(
     r#"SecRule REQUEST_HEADERS:User-Agent "@contains BadBot" "id:1002,phase:1,deny,status:403""#)?;
+    rules.add(
+    r#"SecRule REQUEST_URI "@streq /old" "id:1004,phase:1,redirect:'https://example.com/new',status:302""#
+)?;
+
     rules.add("SecRequestBodyAccess On")?;
 
     rules.add(r#"SecRule ARGS:username "@streq admin" "id:1003,phase:2,deny,status:403""#)?;
 
     let mut tx = Transaction::new(&_waf, &rules)?;
 
-    tx.process_uri("/hello", "GET", "1.1")?;
+    tx.process_uri("/old", "GET", "1.1")?;
     tx.add_request_header("Host", "localhost")?;
     tx.add_request_header("User-Agent", "Mozila/1.0")?;
     tx.add_request_header("Content-Type", "application/x-www-form-urlencoded")?;
@@ -56,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let body = b"username=user&password=123";
     tx.append_request_body(body);
-    tx.process_request_body();
+    tx.process_request_body()?;
 
     println!("Body:{:?}", tx.intervention());
 
