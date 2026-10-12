@@ -51,18 +51,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut tx = Transaction::new(&_waf, &rules)?;
 
-    tx.process_uri("/old", "GET", "1.1")?;
-    tx.add_request_header("Host", "localhost")?;
-    tx.add_request_header("User-Agent", "Mozila/1.0")?;
-    tx.add_request_header("Content-Type", "application/x-www-form-urlencoded")?;
-    tx.process_request_headers();
-    println!("Headers:{:?}", tx.intervention());
-
-    let body = b"username=user&password=123";
-    tx.append_request_body(body);
-    tx.process_request_body()?;
-
-    println!("Body:{:?}", tx.intervention());
+    tx.process_uri("/admin", "GET", "1.1")?;
+    tx.process_request_headers()?;
 
     let mut server = Server::new(None).unwrap();
     server.bootstrap();
@@ -72,4 +62,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     server.add_service(proxy);
     server.run_forever();
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_redirect_is_persistent() -> Result<(), Box<dyn std::error::Error>> {
+        let _waf = ModSecurity::new().expect("Could not initialize");
+        let mut rules = Rules::new()?;
+        rules.add("SecRuleEngine On");
+        rules.add(
+        r#"SecRule REQUEST_URI "@streq /old" "id:1004,phase:1,redirect:'https://example.com/new',status:302""#
+        )?;
+
+        let mut tx = Transaction::new(&_waf, &rules)?;
+        tx.process_uri("/old", "GET", "1.1")?;
+        tx.process_request_headers()?;
+
+        let first = tx.intervention();
+        let second = tx.intervention();
+
+        assert_eq!(first, second);
+        assert_eq!(
+            first,
+            WafDecision::Redirect {
+                status: 302,
+                url: "https://example.com/new".into(),
+            }
+        );
+        Ok(())
+    }
 }
