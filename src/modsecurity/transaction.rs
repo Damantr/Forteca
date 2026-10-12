@@ -60,6 +60,13 @@ impl<'a> Transaction<'a> {
         unsafe { ffi::msc_process_request_headers(self.ptr.as_ptr()) }
     }
 
+    pub fn append_request_body(&mut self, body: &[u8]) -> i32 {
+        unsafe { ffi::msc_append_request_body(self.ptr.as_ptr(), body.as_ptr(), body.len()) }
+    }
+    pub fn process_request_body(&mut self) -> i32 {
+        unsafe { ffi::msc_process_request_body(self.ptr.as_ptr()) }
+    }
+
     pub fn add_request_header(&mut self, name: &str, value: &str) -> Result<(), String> {
         let name = name.as_bytes();
         let value = value.as_bytes();
