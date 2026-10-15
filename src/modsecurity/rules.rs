@@ -1,8 +1,9 @@
 use super::ffi;
+use core::error;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
-use std::ptr;
 use std::ptr::NonNull;
+use std::{path, ptr};
 
 pub struct Rules {
     ptr: NonNull<ffi::RulesSet>,
@@ -32,6 +33,25 @@ impl Rules {
             };
             return Err(message);
         }
+        Ok(())
+    }
+
+    pub fn add_file(&mut self, path: &str) -> Result<(), String> {
+        let path = CString::new(path).map_err(|e| e.to_string())?;
+        let mut error: *const c_char = ptr::null();
+
+        let result =
+            unsafe { ffi::msc_rules_add_file(self.ptr.as_ptr(), path.as_ptr(), &mut error) };
+        if result < 0 {
+            let message = if error.is_null() {
+                "Unknown ModSecurity error".to_string()
+            } else {
+                unsafe { CStr::from_ptr(error).to_string_lossy().into_owned() }
+            };
+
+            return Err(message);
+        }
+
         Ok(())
     }
 }
