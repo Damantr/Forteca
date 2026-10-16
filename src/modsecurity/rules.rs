@@ -1,9 +1,8 @@
 use super::ffi;
-use core::error;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::ptr;
 use std::ptr::NonNull;
-use std::{path, ptr};
 
 pub struct Rules {
     ptr: NonNull<ffi::RulesSet>,

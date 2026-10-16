@@ -1,4 +1,3 @@
-use crate::modsecurity::ffi::Transaction;
 use crate::modsecurity::transaction::WafDecision;
 use crate::modsecurity::{engine::ModSecurity, rules::Rules};
 
