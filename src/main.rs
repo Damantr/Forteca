@@ -12,7 +12,7 @@ use crate::waf_client::{WafClient, WafRequest};
 
 use crate::modsecurity::{
     engine::ModSecurity,
-    inspect_headers,
+    inspect_headers, inspect_request,
     rules::Rules,
     transaction::{Transaction, WafDecision},
 };
@@ -173,6 +173,33 @@ mod tests {
 
         println!("Total: {elapsed:?}");
         println!("Average: {:?}", elapsed / 10_000);
+
+        Ok(())
+    }
+    #[test]
+    fn test_phase2() -> Result<(), String> {
+        let engine = ModSecurity::new()?;
+        let mut rules = Rules::new()?;
+
+        rules.add_file("src/rules/modsecurity.conf")?;
+        rules.add_file("src/rules/custom.conf")?;
+
+        let headers = vec![(
+            b"Content-Type".to_vec(),
+            b"application/x-www-form-urlencoded".to_vec(),
+        )];
+
+        let decision = inspect_request(
+            &engine,
+            &rules,
+            "POST",
+            "/login",
+            "1.1",
+            &headers,
+            b"username=admin",
+        )?;
+
+        assert_eq!(decision, WafDecision::Block(403));
 
         Ok(())
     }

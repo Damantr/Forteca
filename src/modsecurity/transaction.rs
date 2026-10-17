@@ -4,6 +4,8 @@ use std::{
     ptr::{self, NonNull},
 };
 
+use pingora::protocols::http::custom::server;
+
 use super::{engine::ModSecurity, ffi, rules::Rules};
 
 pub struct Transaction<'a> {
@@ -106,8 +108,10 @@ impl<'a> Transaction<'a> {
         Ok(())
     }
 
-    pub fn append_request_body(&mut self, body: &[u8]) -> i32 {
-        unsafe { ffi::msc_append_request_body(self.ptr.as_ptr(), body.as_ptr(), body.len()) }
+    pub fn append_request_body(&mut self, body: &[u8]) -> Result<(), String> {
+        let result =
+            unsafe { ffi::msc_append_request_body(self.ptr.as_ptr(), body.as_ptr(), body.len()) };
+        Self::check_result(result, "append_request_body")
     }
     pub fn check_result(result: i32, operation: &str) -> Result<(), String> {
         if result == 1 {
@@ -141,6 +145,29 @@ impl<'a> Transaction<'a> {
             )
         };
         Ok(())
+    }
+
+    pub fn process_connection(
+        &mut self,
+        client_ip: &str,
+        client_port: i32,
+        server_ip: &str,
+        server_port: i32,
+    ) -> Result<(), String> {
+        let client = std::ffi::CString::new(client_ip).map_err(|e| e.to_string())?;
+        let server = std::ffi::CString::new(server_ip).map_err(|e| e.to_string())?;
+
+        let result = unsafe {
+            ffi::msc_process_connection(
+                self.ptr.as_ptr(),
+                client.as_ptr(),
+                client_port,
+                server.as_ptr(),
+                server_port,
+            )
+        };
+
+        Self::check_result(result, "process_connection")
     }
 }
 
