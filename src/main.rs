@@ -5,7 +5,6 @@ use pingora::{
     proxy::{ProxyHttp, Session, http_proxy_service},
     server::Server,
 };
-use std::sync::Arc;
 
 use bytes::Bytes;
 mod modsecurity;
