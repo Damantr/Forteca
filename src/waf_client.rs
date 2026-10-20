@@ -1,9 +1,10 @@
 use crate::modsecurity::{
     engine::{self, ModSecurity},
-    inspect_headers,
+    inspect_headers, inspect_request,
     rules::{self, Rules},
     transaction::{Transaction, WafDecision},
 };
+use std::fs;
 use tokio::sync::{broadcast::Receiver, mpsc, oneshot};
 
 pub struct WafRequest {
@@ -11,6 +12,7 @@ pub struct WafRequest {
     pub uri: String,
     pub version: String,
     pub headers: Vec<(Vec<u8>, Vec<u8>)>,
+    pub body: Vec<u8>,
 }
 
 pub struct WafJob {
@@ -34,8 +36,31 @@ impl WafClient {
                 let mut rules = Rules::new()?;
 
                 rules.add_file("src/rules/modsecurity.conf")?;
-                rules.add_file("src/rules/custom.conf")?;
+                rules.add_file("vendor/coreruleset/crs-setup.conf")?;
 
+                let mut files = Vec::new();
+
+                for entry in
+                    std::fs::read_dir("vendor/coreruleset/rules").map_err(|e| e.to_string())?
+                {
+                    let entry = entry.map_err(|e| e.to_string())?;
+                    let path = entry.path();
+
+                    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                        continue;
+                    };
+
+                    if name.starts_with("REQUEST-") && name.ends_with(".conf") {
+                        files.push(path);
+                    }
+                }
+                files.sort();
+
+                for file in files {
+                    rules.add_file(file.to_str().unwrap())?;
+                }
+
+                rules.add_file("src/rules/custom.conf")?;
                 Ok((engine, rules))
             })();
 
@@ -46,13 +71,14 @@ impl WafClient {
                     while let Some(job) = reciver.blocking_recv() {
                         let request = job.request;
 
-                        let result = inspect_headers(
+                        let result = inspect_request(
                             &engine,
                             &rules,
                             &request.method,
                             &request.uri,
                             &request.version,
                             &request.headers,
+                            &request.body,
                         );
 
                         let _ = job.reply.send(result);

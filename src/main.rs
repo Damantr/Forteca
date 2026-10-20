@@ -1,10 +1,13 @@
 use async_trait::async_trait;
 use pingora::{
+    Error, ErrorType,
     prelude::HttpPeer,
     proxy::{ProxyHttp, Session, http_proxy_service},
     server::Server,
 };
 use std::sync::Arc;
+
+use bytes::Bytes;
 mod modsecurity;
 mod waf_client;
 
@@ -21,10 +24,20 @@ struct RProxy {
     waf: WafClient,
 }
 
+#[derive(Default)]
+struct WafCtx {
+    request: Option<WafRequest>,
+    body: Vec<u8>,
+}
+
+const MAX_BODY_SIZE: usize = 1024 * 1024;
+
 #[async_trait]
 impl ProxyHttp for RProxy {
-    type CTX = ();
-    fn new_ctx(&self) -> Self::CTX {}
+    type CTX = WafCtx;
+    fn new_ctx(&self) -> Self::CTX {
+        WafCtx::default()
+    }
     async fn upstream_peer(
         &self,
         _session: &mut Session,
@@ -43,9 +56,20 @@ impl ProxyHttp for RProxy {
     async fn request_filter(
         &self,
         _session: &mut Session,
-        _ctx: &mut Self::CTX,
+        ctx: &mut Self::CTX,
     ) -> pingora::Result<bool> {
         let req = _session.req_header();
+
+        if req
+            .headers
+            .get("content-length")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok())
+            .is_some_and(|length| length > MAX_BODY_SIZE as u64)
+        {
+            _session.respond_error(413).await?;
+            return Ok(true);
+        }
 
         let method = req.method.to_string();
         let uri = req.uri.to_string();
@@ -66,47 +90,80 @@ impl ProxyHttp for RProxy {
             .map(|(name, value)| (name.as_str().as_bytes().to_vec(), value.as_bytes().to_vec()))
             .collect();
 
-        let decision = self
-            .waf
-            .inspect(WafRequest {
-                method,
-                uri,
-                version,
-                headers,
-            })
-            .await;
+        ctx.request = Some(WafRequest {
+            method,
+            uri,
+            version,
+            headers,
+            body: Vec::new(),
+        });
 
-        match decision {
-            Ok(WafDecision::Allow) => Ok(false),
+        Ok(false)
+    }
 
-            Ok(WafDecision::Block(status)) => {
-                _session
-                    .respond_error_with_body(status, "Blocked by WAF".into())
-                    .await?;
-
-                Ok(true)
+    async fn request_body_filter(
+        &self,
+        _session: &mut Session,
+        body: &mut Option<Bytes>,
+        end_of_stream: bool,
+        ctx: &mut Self::CTX,
+    ) -> pingora::Result<()> {
+        if let Some(chunk) = body.take() {
+            if chunk.len() > MAX_BODY_SIZE.saturating_sub(ctx.body.len()) {
+                return Err(Error::explain(
+                    ErrorType::HTTPStatus(413),
+                    "Request body too large",
+                ));
             }
 
-            Ok(WafDecision::Redirect { status, url }) => {
-                let mut response = pingora::http::ResponseHeader::build(status, None)?;
-
-                response.insert_header("Location", url.as_str())?;
-
-                _session
-                    .write_response_header(Box::new(response), true)
-                    .await?;
-
-                Ok(true)
-            }
-            Err(error) => {
-                eprintln!("WAF error: {}", error);
-                _session
-                    .respond_error_with_body(500, "WAF inspection failed".into())
-                    .await?;
-
-                Ok(true)
-            }
+            ctx.body.extend_from_slice(&chunk);
         }
+
+        if end_of_stream {
+            let mut request = ctx
+                .request
+                .take()
+                .ok_or_else(|| Error::explain(ErrorType::InternalError, "Missing WAF request"))?;
+
+            request.body = std::mem::take(&mut ctx.body);
+
+            let body_to_forward = Bytes::copy_from_slice(&request.body);
+
+            let decision = self.waf.inspect(request).await;
+
+            match decision {
+                Ok(WafDecision::Allow) => {
+                    *body = Some(body_to_forward);
+                }
+
+                Ok(WafDecision::Block(status)) => {
+                    return Err(Error::explain(
+                        ErrorType::HTTPStatus(status),
+                        "Blocked by WAF",
+                    ));
+                }
+
+                Ok(WafDecision::Redirect { .. }) => {
+                    return Err(Error::explain(
+                        ErrorType::InternalError,
+                        "Redirect during body inspection",
+                    ));
+                }
+
+                Err(error) => {
+                    eprintln!("WAF error: {error}");
+
+                    return Err(Error::explain(
+                        ErrorType::InternalError,
+                        "WAF inspection failed",
+                    ));
+                }
+            }
+        } else {
+            *body = Some(Bytes::new());
+        }
+
+        Ok(())
     }
 }
 

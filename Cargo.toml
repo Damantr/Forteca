@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 async-trait = "0.1"
+bytes = "1.12.1"
 pingora = { version = "0.9.0", features = ["proxy", "openssl"] }
 tokio = { version = "1.53.3", features = ["full"] }
 
