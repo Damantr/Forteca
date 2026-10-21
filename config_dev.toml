@@ -1,0 +1,17 @@
+[server]
+listen = "127.0.0.1:3001"
+
+[tls]
+cert = "certs/dev.pem"
+key = "certs/dev-key.pem"
+
+[[routes]]
+domain = "localhost"
+upstream = "127.0.0.1:7275"
+protocol = "https"
+tls_server_name = "localhost"
+
+[[routes]]
+domain = "app.localhost"
+upstream = "127.0.0.1:8080"
+protocol = "http"

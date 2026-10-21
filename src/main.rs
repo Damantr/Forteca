@@ -5,10 +5,15 @@ use pingora::{
     proxy::{ProxyHttp, Session, http_proxy_service},
     server::Server,
 };
+use std::sync::Arc;
 
 use bytes::Bytes;
 mod modsecurity;
 mod waf_client;
+
+use config_model::ConfigT;
+
+mod config_model;
 
 use crate::waf_client::{WafClient, WafRequest};
 
@@ -20,6 +25,7 @@ use crate::modsecurity::{
 };
 
 struct RProxy {
+    config: Arc<ConfigT>,
     waf: WafClient,
 }
 
@@ -42,16 +48,16 @@ impl ProxyHttp for RProxy {
         _session: &mut Session,
         _ctx: &mut Self::CTX,
     ) -> pingora::Result<Box<HttpPeer>> {
-        let mut peer = Box::new(HttpPeer::new(
-            "127.0.0.1:7275",
-            true,
-            "localhost".to_string(),
-        ));
-        peer.options.verify_cert = false;
-        peer.options.verify_hostname = false;
-        Ok(peer)
-    }
+        let route = &self.config.routes[0];
 
+        let peer = HttpPeer::new(
+            &route.upstream,
+            route.protocol == "https",
+            route.tls_server_name.clone().unwrap_or_default(),
+        );
+
+        Ok(Box::new(peer))
+    }
     async fn request_filter(
         &self,
         _session: &mut Session,
@@ -167,14 +173,21 @@ impl ProxyHttp for RProxy {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config: Arc<ConfigT> = Arc::new(ConfigT::load("config_dev.toml")?);
+    println!("{:#?}", config);
+
     let waf = WafClient::start()?;
     let mut server = Server::new(None).unwrap();
     server.bootstrap();
 
-    let mut proxy = http_proxy_service(&server.configuration, RProxy { waf });
-    proxy
-        .add_tls("0.0.0.0:3001", "cert.pem", "key.pem")
-        .unwrap();
+    let mut proxy = http_proxy_service(
+        &server.configuration,
+        RProxy {
+            waf,
+            config: Arc::clone(&config),
+        },
+    );
+    proxy.add_tls(&config.server.listen, &config.tls.key, &config.tls.key)?;
     server.add_service(proxy);
     server.run_forever();
 }

@@ -1,11 +1,7 @@
 use crate::modsecurity::{
-    engine::{self, ModSecurity},
-    inspect_headers, inspect_request,
-    rules::{self, Rules},
-    transaction::{Transaction, WafDecision},
+    engine::ModSecurity, inspect_request, rules::Rules, transaction::WafDecision,
 };
-use std::fs;
-use tokio::sync::{broadcast::Receiver, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
 
 pub struct WafRequest {
     pub method: String,
