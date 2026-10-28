@@ -187,7 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             config: Arc::clone(&config),
         },
     );
-    proxy.add_tls(&config.server.listen, &config.tls.key, &config.tls.key)?;
+    proxy.add_tls(&config.server.listen, &config.tls.cert, &config.tls.key)?;
     server.add_service(proxy);
     server.run_forever();
 }
